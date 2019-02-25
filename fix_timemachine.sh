@@ -6,6 +6,9 @@ if [ $(id -u) -ne 0 ]; then
 	exec sudo $0 $@
 fi
 
+###
+# Initialize parameters for the repair operation
+###
 HOSTNAME=$(hostname -s)
 
 DEST=$(tmutil destinationinfo -X | plutil -extract Destinations.0.URL xml1 - -o - | plutil -p -  | sed 's/\"//g')
@@ -24,39 +27,72 @@ if [ x$PASSWD == x"" ]; then
 fi
 DEST=afp://${USER}:${PASSWD}@${NAS}/$VOL
 
-echo "Temporarily disabling Time Machine"
+
+###
+# Make sure we clean up if we're interrupted
+###
+function cleanup() {
+	if hdiutil info | grep image-path | grep /Volumes/$VOL > /dev/null; then
+		progress "Cleaning up TM attachment"
+		hdiutil detach $DISK
+	fi
+	if [ -d /Volumes/$VOL ]; then
+		progress "Cleaning up TM mount"
+		umount /Volumes/$VOL
+		rm -fd /Volumes/$VOL
+	fi
+	progress "Re-enabling TM"
+	tmutil enable
+}
+trap cleanup SIGHUP SIGINT SIGTERM
+
+###
+# Make sure messages are noticeable in to fsck output spam
+###
+function progress() {
+	local msg="$1"
+	echo "###################################"
+	echo $msg
+	echo "###################################"
+}
+
+progress "Temporarily disabling Time Machine"
 tmutil disable
 
-echo "Mounting Time Machine NAS volume"
+progress "Mounting Time Machine NAS volume"
 mkdir -p /Volumes/$VOL
-mount_afp $DEST /Volumes/$VOL
+if ! mount | grep /Volumes/$VOL; then
+	mount_afp $DEST /Volumes/$VOL
+fi
 
-echo "Setting permissions"
+progress "Setting permissions"
 chflags -R nouchg /Volumes/$VOL/$HOSTNAME.sparsebundle
 
-echo "Attaching time machine sparsebundle"
+progress "Attaching time machine sparsebundle"
 DISK=$(hdiutil attach -nomount -readwrite -noverify -noautofsck /Volumes/$VOL/$HOSTNAME.sparsebundle | grep HFS | awk '{ print $1 }')
-echo "Doing fsck -p. This isn't always necessary, but can help in some troublesome cases"
+progress "Doing fsck -p. This isn't always necessary, but can help in some troublesome cases"
 fsck_hfs -p $DISK
-echo "Detaching time machine sparsebundle"
+progress "Detaching time machine sparsebundle"
 hdiutil detach $DISK
 
-echo "Re-attaching time machine sparsebundle"
+progress "Re-attaching time machine sparsebundle"
 DISK=$(hdiutil attach -nomount -readwrite -noverify -noautofsck /Volumes/$VOL/$HOSTNAME.sparsebundle | grep HFS | awk '{ print $1 }')
-echo "Doing fsck -drfy. This is what directly addresses the issue."
+progress "Doing fsck -drfy. This is what directly addresses the issue."
 fsck_hfs -drfy $DISK
-echo "Detaching time machine sparsebundle"
+progress "Detaching time machine sparsebundle"
 hdiutil detach $DISK
 
-echo "Updating plist to remove failed state, so TM will try again"
+progress "Updating plist to remove failed state, so TM will try again"
 plutil -remove RecoveryBackupDeclinedDate /Volumes/$VOL/$HOSTNAME.sparsebundle/com.apple.TimeMachine.MachineID.plist
 plutil -replace VerificationState -integer 0 /Volumes/$VOL/$HOSTNAME.sparsebundle/com.apple.TimeMachine.MachineID.plist
-echo "Unmounting Time Machine NAS volume"
+progress "Unmounting Time Machine NAS volume"
 umount /Volumes/$VOL
 rm -fd /Volumes/$VOL
 
-echo "Re-enabling Time Machine"
+progress "Re-enabling Time Machine"
 tmutil enable
 
-echo "Starting a backup"
+trap - SIGHUP SIGINT SIGTERM
+
+progress "Starting a backup"
 tmutil startbackup
