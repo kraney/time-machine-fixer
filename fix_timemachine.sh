@@ -98,14 +98,14 @@ chflags -R nouchg /Volumes/$VOL/$HOSTNAME.sparsebundle | progress_bar chflags 1 
 info "Attaching time machine sparsebundle"
 attach /Volumes/$VOL/$HOSTNAME.sparsebundle
 info "Doing fsck -p. This isn't always necessary, but can help in some troublesome cases"
-fsck_hfs -pfy $DISK | progress_bar "fsck_hfs -p" 40 -tep
+fsck_hfs -pfy $DISK 2>&1 | progress_bar "fsck_hfs -p" 40 -tep
 info "Detaching time machine sparsebundle"
 hdiutil detach $DISK
 
 info "Re-attaching time machine sparsebundle"
 attach /Volumes/$VOL/$HOSTNAME.sparsebundle
 info "Doing fsck -drfy. This is what directly addresses the issue."
-fsck_hfs -drfy $DISK | progress_bar "fsck_hfs -drfy" 40 -tep
+fsck_hfs -drfy $DISK 2>&1 | progress_bar "fsck_hfs -drfy" 40 -tep
 info "Detaching time machine sparsebundle"
 hdiutil detach $DISK
 
