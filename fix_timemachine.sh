@@ -18,12 +18,7 @@ VOL=$(echo $DEST | cut -d@ -f2 | cut -d/ -f2)
 PASSWD=$(security find-generic-password -w $NAS -a $USER /Library/Keychains/System.keychain)
 
 if [ x$PASSWD == x"" ]; then
-	echo -n "share password: "
-	stty_orig=$(stty -g)
-	stty -echo
-	read PASSWD
-	stty $stty_orig
-	echo
+	read -sp "Password for the share: " PASSWD
 fi
 DEST=afp://${USER}:${PASSWD}@${NAS}/$VOL
 
